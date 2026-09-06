@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Korttipelilaskuri</title>
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color-scheme: light dark;
+    }
+    body {
+      margin: 0;
+      background: #111827;
+      color: #f9fafb;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    h1 { margin: 0 0 18px; }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    input, button {
+      font: inherit;
+      border-radius: 10px;
+      border: 1px solid #374151;
+      padding: 10px 12px;
+    }
+    input {
+      flex: 1 1 220px;
+      background: #1f2937;
+      color: white;
+    }
+    button {
+      cursor: pointer;
+      background: #2563eb;
+      color: white;
+      font-weight: 700;
+    }
+    button.secondary { background: #374151; }
+    button.danger { background: #b91c1c; }
+    .players {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 16px;
+      padding: 16px;
+    }
+    .player-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .name {
+      font-size: 1.2rem;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+    .score {
+      font-size: 2rem;
+      font-weight: 900;
+      min-width: 60px;
+      text-align: right;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+    .grid button { padding: 12px 6px; }
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .history {
+      margin-top: 12px;
+      font-size: .9rem;
+      color: #d1d5db;
+      min-height: 22px;
+    }
+    .empty {
+      color: #9ca3af;
+      padding: 18px 0;
+    }
+    .remove {
+      background: transparent;
+      border-color: #4b5563;
+      color: #d1d5db;
+      padding: 6px 9px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Korttipelilaskuri</h1>
+
+    <div class="toolbar">
+      <input id="playerName" placeholder="Pelaajan nimi" autocomplete="off">
+      <button id="addPlayer">Lisää pelaaja</button>
+      <button id="resetAll" class="secondary">Nollaa peli</button>
+    </div>
+
+    <div id="players" class="players"></div>
+    <div id="empty" class="empty">Lisää ensimmäinen pelaaja.</div>
+  </div>
+
+<script>
+  const STORAGE_KEY = 'korttipelilaskuri_state_v1';
+
+  function loadState() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (!saved) return { players: [] };
+
+      const parsed = JSON.parse(saved);
+      if (!parsed || !Array.isArray(parsed.players)) return { players: [] };
+
+      return {
+        players: parsed.players.map(p => ({
+          name: String(p.name || ''),
+          score: Number.isFinite(Number(p.score)) ? Number(p.score) : 0,
+          history: Array.isArray(p.history) ? p.history : []
+        }))
+      };
+    } catch (err) {
+      console.warn('Tallennetun pelitilan lukeminen epäonnistui:', err);
+      return { players: [] };
+    }
+  }
+
+  const state = loadState();
+
+  const playersEl = document.getElementById('players');
+  const emptyEl = document.getElementById('empty');
+  const inputEl = document.getElementById('playerName');
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: 1,
+        savedAt: new Date().toISOString(),
+        players: state.players
+      }));
+    } catch (err) {
+      console.warn('Pelitilan tallentaminen epäonnistui:', err);
+    }
+  }
+
+  function render() {
+    playersEl.innerHTML = '';
+    emptyEl.style.display = state.players.length ? 'none' : 'block';
+
+    state.players.forEach((p, index) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const head = document.createElement('div');
+      head.className = 'player-head';
+
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = p.name;
+
+      const score = document.createElement('div');
+      score.className = 'score';
+      score.textContent = p.score;
+
+      head.appendChild(name);
+      head.appendChild(score);
+
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+
+      [1,2,3,4,5,6,7,8,15].forEach(value => {
+        const b = document.createElement('button');
+        b.textContent = '+' + value;
+        b.addEventListener('click', () => changeScore(index, value, '+' + value));
+        grid.appendChild(b);
+      });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'remove';
+      removeBtn.textContent = 'Poista';
+      removeBtn.addEventListener('click', () => {
+        state.players.splice(index, 1);
+        save();
+        render();
+      });
+      grid.appendChild(removeBtn);
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+
+      const minus15 = document.createElement('button');
+      minus15.className = 'danger';
+      minus15.textContent = '−15';
+      minus15.addEventListener('click', () => changeScore(index, -15, '−15'));
+
+      const clear = document.createElement('button');
+      clear.className = 'danger';
+      clear.textContent = '− kaikki';
+      clear.addEventListener('click', () => {
+        const old = state.players[index].score;
+        state.players[index].score = 0;
+        state.players[index].history.push('− kaikki (' + old + ' → 0)');
+        save();
+        render();
+      });
+
+      actions.appendChild(minus15);
+      actions.appendChild(clear);
+
+      const history = document.createElement('div');
+      history.className = 'history';
+      const last = p.history.slice(-5).reverse();
+      history.textContent = last.length ? 'Viimeiset: ' + last.join(', ') : 'Ei kirjauksia';
+
+      card.appendChild(head);
+      card.appendChild(grid);
+      card.appendChild(actions);
+      card.appendChild(history);
+
+      playersEl.appendChild(card);
+    });
+  }
+
+  function changeScore(index, delta, label) {
+    state.players[index].score += delta;
+    state.players[index].history.push(label);
+    save();
+    render();
+  }
+
+  function addPlayer() {
+    const name = inputEl.value.trim();
+    if (!name) return;
+    state.players.push({ name, score: 0, history: [] });
+    inputEl.value = '';
+    save();
+    render();
+    inputEl.focus();
+  }
+
+  document.getElementById('addPlayer').addEventListener('click', addPlayer);
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') addPlayer();
+  });
+
+  document.getElementById('resetAll').addEventListener('click', () => {
+    state.players = state.players.map(p => ({...p, score: 0, history: []}));
+    save();
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>
